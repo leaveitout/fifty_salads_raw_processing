@@ -169,8 +169,8 @@ mid_to_custom = {
     0: 0,
     1: 1,
     2: 2,
-    3: 0,
-    4: 0,
+    3: 3,
+    4: 3,
     5: 3,
     6: 4,
     7: 4,
@@ -280,7 +280,7 @@ def get_dataset_files(raw_dir: os.path) -> dict:
 
 def extract_rgb_files(rgb_avi_loc: os.path, output_dir_loc: os.path):
     # TODO: Implement in python to remove a dependency
-    os.mkdir(output_dir_loc)
+    create_dir(output_dir_loc)
     extract_pngs_cmd = ['ocv_extract_pngs',
                         str(rgb_avi_loc),
                         str(output_dir_loc)]
@@ -315,6 +315,8 @@ def make_pcds(rgb_sample_dir: os.path,
                      if os.path.isfile(os.path.join(rgb_sample_dir, rgb_file))]
     rgb_filenames.sort()
 
+    old_depth_filepath = os.path.join(depth_sample_dir, timestamps[0][1])
+
     for idx, ts in enumerate(timestamps):
         if idx >= len(rgb_filenames):
             print("Not enough rgb files in {} "
@@ -323,6 +325,12 @@ def make_pcds(rgb_sample_dir: os.path,
 
         rgb_filepath = os.path.join(rgb_sample_dir, rgb_filenames[idx])
         depth_filepath = os.path.join(depth_sample_dir, ts[1])
+
+        if not os.path.exists(depth_filepath):
+            depth_filepath = old_depth_filepath
+
+        old_depth_filepath = depth_filepath
+
         pcd_filename = ts[0].zfill(16) + '.pcd'
         pcd_filepath = os.path.join(output_pcd_path, pcd_filename)
 
@@ -367,7 +375,7 @@ def extract_depth_images(pcd_dir: os.path,
 
 def extract_colour_images(pcd_dir: os.path,
                           output_rgb_path: os.path):
-    os.mkdir(output_rgb_path)
+    create_dir(output_rgb_path)
 
     pcd_filenames = [pcd_file for pcd_file in os.listdir(pcd_dir)
                      if os.path.isfile(os.path.join(pcd_dir, pcd_file))]
@@ -441,7 +449,9 @@ def validate_sample_dir(output_sample_dir: os.path, timestamps):
             last_pcd_time = str(int(last_pcd.split('.')[0]))
 
             if last_pcd_time == timestamps[rgb_len - 1][0] and \
-                    last_pgm == timestamps[rgb_len - 1][1]:
+                    os.path.exists(os.path.join(depth_pgm_dir,
+                                                timestamps[rgb_len - 1][1])):
+                # last_pgm == timestamps[rgb_len - 1][1]:
                 num_samples = rgb_len
                 num_samples_changed = True
 
@@ -656,8 +666,9 @@ def process_sample(rgb_file: os.path,
     extract_depth_images(cache_pcd_dir, cache_depth_dir)
 
     # Extract pcd rgb
-    cache_depth_dir = os.path.join(cache_sample_dir, 'depth')
-    extract_depth_images(cache_pcd_dir, cache_depth_dir)
+    # First clean the rgb dir
+    clean_cache_dir(cache_rgb_dir)
+    extract_colour_images(cache_pcd_dir, cache_rgb_dir)
 
     # Calculate flow
     cache_flow_dir = os.path.join(cache_sample_dir, 'flow')

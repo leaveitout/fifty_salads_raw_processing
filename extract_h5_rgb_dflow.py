@@ -7,11 +7,14 @@ import argparse
 import os
 import sys
 import glob
+import collections
+from itertools import accumulate
+import json
 import numpy as np
 import cv2
 import pcl
-import h5py
 import progressbar
+import h5py
 
 
 def load_or_create_dataset(dataset_loc):
@@ -41,28 +44,22 @@ def load_image(image_loc):
 def resize_cloud(cloud_mat: np.ndarray,
                  downscale: float,
                  cv2_interpolation=cv2.INTER_NEAREST) -> np.ndarray:
-    # if cv2_interpolation == cv2.INTER_NEAREST:
-    #     return cloud_mat[::2, ::2, :].astype(np.float16)
-    # else:
     cloud_planes = np.split(cloud_mat, 3, axis=-1)
 
-    cloud_planes_resized = []
+    cloud_planes_downscaled = []
 
     for cp in cloud_planes:
         cp_no_nan = np.nan_to_num(cp, copy=False)
-        cp_resized = cv2.resize(
+        cp_downscaled = cv2.resize(
             cp_no_nan,
             dsize=None,
             fx=downscale,
             fy=downscale,
             interpolation=cv2_interpolation
         ).astype(np.float16)
+        cloud_planes_downscaled.append(cp_downscaled)
 
-        cp_resized.resize((cp_resized.shape[0], cp_resized.shape[1], 1))
-
-        cloud_planes_resized.append(cp_resized)
-
-    return np.concatenate(cloud_planes_resized, axis=-1)
+    return np.concatenate(cloud_planes_downscaled, axis=-1)
 
 
 def resize_image_float16(image_mat: np.ndarray,
@@ -82,16 +79,11 @@ def resize_image_float16(image_mat: np.ndarray,
 def resize_image(image_mat: np.ndarray,
                  downscale: float,
                  cv2_interpolation=cv2.INTER_AREA) -> np.ndarray:
-    resized = cv2.resize(image_mat,
-                         dsize=None,
-                         fx=downscale,
-                         fy=downscale,
-                         interpolation=cv2_interpolation)
-
-    if len(resized.shape) == 2:
-        resized.resize((resized.shape[0], resized.shape[1], 1))
-
-    return resized
+    return cv2.resize(image_mat,
+                      dsize=None,
+                      fx=downscale,
+                      fy=downscale,
+                      interpolation=cv2_interpolation)
 
 
 def load_depth_pgm(depth_pgm_loc):
@@ -123,9 +115,70 @@ def load_depth_image(depth_loc):
 
 def load_cloud(cloud_loc):
     if os.path.isfile(cloud_loc):
-        return np.reshape(pcl.load(cloud_loc).to_array(), (240, 320, 3))
+        flow_cloud = np.reshape(pcl.load(cloud_loc).to_array(), (240, 320, 3))
     else:
         return np.zeros((240, 320, 3), dtype=np.float32)
+
+
+def get_frame(frame_id, dir_loc, downscale=1):
+    rgb_loc = os.path.join(dir_loc, 'rgb', str(frame_id) + '.png')
+    rgb = load_image(rgb_loc)
+
+    depth_loc = os.path.join(dir_loc, 'depth', str(frame_id) + '.png')
+    depth = load_depth_image(depth_loc)
+
+    flow_loc = os.path.join(dir_loc, 'flow', str(frame_id) + '.pcd')
+    flow = load_cloud(flow_loc)
+
+    frame = np.concatenate((rgb, depth, flow), axis=-1)
+
+    if downscale > 1:
+        frame = frame[::int(downscale), ::int(downscale), :]
+
+    return frame
+
+
+def load_labels_as_numpy(json_loc):
+    with open(json_loc, 'r') as json_fp:
+        return np.array(json.load(json_fp))
+
+
+def process_sample_folder(dataset, dir_loc, downscale=1):
+    rgb_files = glob.glob1(os.path.join(dir_loc, 'rgb'), '*.png')
+    rgb_files.sort()
+
+    # Strip the .png
+    rgb_files = [r[:-4] for r in rgb_files]
+    count = 0
+
+    for f in rgb_files:
+        frame = get_frame(f, dir_loc, downscale)
+        # TODO: Add the frame to the dataset
+        if 'frames' not in set(dataset.keys()):
+            frame = np.expand_dims(frame, axis=0)
+            max_shape = (None,) + frame.shape[1:]
+            dataset.create_dataset('frames',
+                                   data=frame,
+                                   shape=frame.shape,
+                                   maxshape=max_shape)
+        else:
+            frames_dataset = dataset['frames']
+            new_frames_dataset_shape = (frames_dataset.shape[0] + 1,) + \
+                                       frames_dataset.shape[1:]
+
+            frames_dataset.resize(new_frames_dataset_shape)
+            frames_dataset[-1] = frame
+        count += 1
+
+    return count
+
+
+def get_labels(dir_loc, granularity: str):
+    file_loc = os.path.join(dir_loc, 'labels', granularity + '_labels.json')
+
+    return load_labels_as_numpy(file_loc)
+
+    # TODO: Add the labels to the dataset
 
 
 def get_splits(offsets, num_splits) -> np.ndarray:
@@ -145,13 +198,13 @@ def get_splits(offsets, num_splits) -> np.ndarray:
     for row in range(splits.shape[0]):
         test_sample_num = splits.shape[0] - 1 - row
         test_sample_start = samples_per_split * test_sample_num
-        splits[row, test_sample_start: test_sample_start + samples_per_split] \
-            = False
+        splits[row,
+        test_sample_start: test_sample_start + samples_per_split] = False
 
     return splits
 
 
-def from_nhwc_to_nchw(input_data: np.ndarray):
+def from_nhwc_to_nchw(input_data):
     """
     Converts a numpy array from xyzhwc to xyzchw.
 
@@ -187,67 +240,66 @@ def check_files_correct(rgb_files, depth_pgm_files, flow_files, sample_dir):
 
 
 def process_sample(sample_dir: os.path,
-                   rgbd_dataset: h5py.Dataset,
-                   flow_dataset: h5py.Dataset,
+                   rgb_dataset: h5py.Dataset,
+                   dflow_dataset: h5py.Dataset,
                    fine_dataset: h5py.Dataset,
                    mid_dataset: h5py.Dataset,
                    coarse_dataset: h5py.Dataset,
                    custom_dataset: h5py.Dataset,
                    offset: int,
                    downscale: float):
-    print("Processing sample: {}".format(sample_dir))
-
     rgb_dir = os.path.join(sample_dir, 'rgb')
-    depth_dir = os.path.join(sample_dir, 'depth')
+    depth_pgm_dir = os.path.join(sample_dir, 'depth_pgm')
     flow_dir = os.path.join(sample_dir, 'flow')
 
     rgb_files = glob.glob1(rgb_dir, '*.png')
     rgb_files.sort()
-    depth_files = glob.glob1(depth_dir, '*.png')
-    depth_files.sort()
-    flow_files = glob.glob1(flow_dir, '*.pcd')
+    depth_pgm_files = glob.glob1(depth_pgm_dir, '*.pgm')
+    depth_pgm_files.sort()
+    flow_files = glob.glob1(flow_dir, '*.pgm')
     flow_files.sort()
 
-    check_files_correct(rgb_files, depth_files, flow_files, sample_dir)
+    check_files_correct(rgb_files, depth_pgm_files, flow_files, sample_dir)
 
-    print("Processing rgbd...")
+    print("Processing rgb...")
 
-    bar = progressbar.ProgressBar(max_value=len(rgb_files))
-    for idx, rgbd_tuple in bar(enumerate(zip(rgb_files, depth_files))):
-        rgb_file_path, depth_file_path = rgbd_tuple
-        rgb_file_path = os.path.join(rgb_dir, rgb_file_path)
+    for idx, rgb_file in enumerate(rgb_files):
+        rgb_file_path = os.path.join(rgb_dir, rgb_file)
         rgb_mat = load_image(rgb_file_path)
 
         if 0.0 < downscale < 1.0:
             rgb_mat = resize_image(rgb_mat, downscale)
 
-        rgb_mat_chw = from_nhwc_to_nchw(rgb_mat)
+        rgb_mat = from_nhwc_to_nchw(rgb_mat)
+        rgb_dataset[offset + idx] = rgb_mat
 
-        depth_file_path = os.path.join(depth_dir, depth_file_path)
-        depth_mat = load_depth_image(depth_file_path)
+    print("Processing dflow...")
+
+    for idx, dflow_tuple in enumerate(zip(depth_pgm_files, flow_files)):
+        depth_pgm_file, flow_file = dflow_tuple
+        depth_pgm_file_path = os.path.join(depth_pgm_dir, depth_pgm_file)
+        depth_pgm_mat = load_depth_pgm(depth_pgm_file_path)
 
         if 0.0 < downscale < 1.0:
-            depth_mat = resize_image(depth_mat, downscale, cv2.INTER_NEAREST)
+            depth_pgm_mat = resize_image_float16(depth_pgm_mat, downscale)
 
-        depth_mat_chw = from_nhwc_to_nchw(depth_mat)
+        depth_pgm_mat_chw = from_nhwc_to_nchw(depth_pgm_mat)
 
-        combined_mat = np.concatenate((rgb_mat_chw, depth_mat_chw), axis=0)
-
-        rgbd_dataset[offset + idx] = combined_mat
-
-    print("Processing flow...")
-
-    bar = progressbar.ProgressBar(max_value=len(flow_files))
-    for idx, flow_file in bar(enumerate(flow_files)):
         flow_file_path = os.path.join(flow_dir, flow_file)
         flow_mat = load_cloud(flow_file_path)
 
+        flow_mat = resize_cloud(flow_mat, downscale)
+
         if 0.0 < downscale < 1.0:
-            flow_mat = resize_cloud(flow_mat, downscale)
+            flow_mat = resize_image(flow_mat, downscale)
 
         flow_mat_chw = from_nhwc_to_nchw(flow_mat)
 
-        flow_dataset[offset + idx] = flow_mat_chw
+        depth_pgm_mat = from_nhwc_to_nchw(depth_pgm_mat)
+
+        combined_mat = np.concatenate((depth_pgm_mat_chw, flow_mat_chw), axis=0)
+
+        dflow_dataset[offset + idx] = combined_mat
 
     print("Processing labels")
 
@@ -267,8 +319,6 @@ def process_sample(sample_dir: os.path,
     custom_labels_file = os.path.join(sample_dir, 'labels_custom.npy')
     custom_labels = np.load(custom_labels_file)
     custom_dataset[offset: offset + custom_labels.shape[0]] = custom_labels
-
-    print("Done!")
 
 
 def process_dataset(h5_dataset_path: os.path,
@@ -292,13 +342,18 @@ def process_dataset(h5_dataset_path: os.path,
     # Get the splits of the datasets.
     sample_splits = get_splits(sample_offsets, 5)
 
+    # print(sample_sizes)
+    # print(sample_offsets)
+    # print(sample_splits)
+
     h5_file = h5py.File(h5_dataset_path, 'w')
 
     frame_shape = (int(240 * downscale), int(320 * downscale))
-    rgbd_dataset_shape = (sample_offsets[-1], 4, frame_shape[0], frame_shape[1])
-    flow_dataset_shape = (sample_offsets[-1], 3, frame_shape[0], frame_shape[1])
-    rgbd_chunk_shape = (1,) + rgbd_dataset_shape[-3:]
-    flow_chunk_shape = (1,) + flow_dataset_shape[-3:]
+    rgb_dataset_shape = (sample_offsets[-1], 3, frame_shape[0], frame_shape[1])
+    dflow_dataset_shape = (
+        sample_offsets[-1], 4, frame_shape[0], frame_shape[1])
+    rgb_chunk_shape = (1,) + rgb_dataset_shape[-3:]
+    dflow_chunk_shape = (1,) + dflow_dataset_shape[-3:]
 
     num_fine_actions = 52
     num_mid_actions = 18
@@ -310,17 +365,17 @@ def process_dataset(h5_dataset_path: os.path,
     custom_dataset_shape = (sample_offsets[-1], num_custom_actions)
 
     # Set up the datasets within the h5file.
-    rgbd_dataset = h5_file.create_dataset(name='rgbd',
-                                          shape=rgbd_dataset_shape,
-                                          dtype=np.uint8,
-                                          compression='lzf',
-                                          chunks=rgbd_chunk_shape)
+    rgb_dataset = h5_file.create_dataset(name='rgb',
+                                         shape=rgb_dataset_shape,
+                                         dtype=np.uint8,
+                                         compression='lzf',
+                                         chunks=rgb_chunk_shape)
 
-    flow_dataset = h5_file.create_dataset(name='flow',
-                                          shape=flow_dataset_shape,
-                                          dtype=np.float16,
-                                          compression='lzf',
-                                          chunks=flow_chunk_shape)
+    dflow_dataset = h5_file.create_dataset(name='dflow',
+                                           shape=dflow_dataset_shape,
+                                           dtype=np.uint8,
+                                           compression='lzf',
+                                           chunks=dflow_chunk_shape)
 
     fine_dataset = h5_file.create_dataset(name='fine',
                                           shape=fine_dataset_shape,
@@ -350,8 +405,8 @@ def process_dataset(h5_dataset_path: os.path,
 
     for sample_dir, offset in zip(sample_dirs, sample_offsets):
         process_sample(sample_dir,
-                       rgbd_dataset,
-                       flow_dataset,
+                       rgb_dataset,
+                       dflow_dataset,
                        fine_dataset,
                        mid_dataset,
                        coarse_dataset,
@@ -417,11 +472,11 @@ if __name__ == '__main__':
     args = parser.parse_args()
 
     try:
-        input_dataset_path = os.path.abspath(args.input)
+        dataset_path = os.path.abspath(args.input)
         output_h5_path = os.path.abspath(args.output)
         output_h5_parent_path = os.path.dirname(output_h5_path)
 
-        if not os.path.isdir(input_dataset_path):
+        if not os.path.isdir(dataset_path):
             raise ValueError("Invalid directory for h5 dataset.")
         if not os.path.isdir(output_h5_parent_path):
             raise ValueError("Invalid directory for h5 dataset.")
@@ -429,7 +484,7 @@ if __name__ == '__main__':
             print("Output h5 dataset file already exists, overwriting.")
 
         process_dataset(h5_dataset_path=output_h5_path,
-                        dataset_path=input_dataset_path,
+                        dataset_path=dataset_path,
                         downscale=args.downscale)
 
     except ValueError as err:
