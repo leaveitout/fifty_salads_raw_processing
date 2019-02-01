@@ -30,7 +30,8 @@ def add_flow_uint8_to_dataset(h5_dataset_path: os.path):
         min_flow = max_flow - (flow_increments * (distinct_values - 1))
         scale = (distinct_values - 1) / (max_flow - min_flow)
 
-        for idx in np.arange(flow_dataset.shape[0]):
+        bar = progressbar.ProgressBar()
+        for idx in bar(np.arange(flow_dataset.shape[0])):
             flow_uint8_dataset[idx] = \
                 convert_flow_image(flow_dataset[idx], min_flow, max_flow, scale)
 
