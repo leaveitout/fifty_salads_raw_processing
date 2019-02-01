@@ -19,7 +19,9 @@ def add_mean_and_var(input_file_location: os.path) -> None:
     with h5py.File(input_file_location, 'r+') as h5_file:
         splits = h5_file['splits'][:]
         offsets = h5_file['offsets'][:]
-        rgbd = h5_file['rgbd']
+        rgb = h5_file['rgb']
+        depth = h5_file['depth']
+        depth_f = h5_file['depth_f']
         flow = h5_file['flow']
         num_splits = len(splits)
 
@@ -34,29 +36,50 @@ def add_mean_and_var(input_file_location: os.path) -> None:
                 if inc:
                     train_idxs += sample_idxs
 
+            rgb_accum = welford.WelfordAccumulator(min_valid_samples=100)
+            depth_accum = welford.WelfordAccumulator(min_valid_samples=100)
+            depth_f_accum = welford.WelfordAccumulator(min_valid_samples=100)
             flow_accum = welford.WelfordAccumulator(min_valid_samples=100)
-            rgbd_accum = welford.WelfordAccumulator(min_valid_samples=100)
 
             bar = progressbar.ProgressBar()
             for train_idx in bar(train_idxs):
+                rgb_image = rgb[train_idx]
+                depth_image = depth[train_idx]
+                depth_f_image = depth_f[train_idx]
                 flow_image = flow[train_idx]
-                rgbd_image = rgbd[train_idx]
 
                 # The entire dataset is covered after two splits.
                 if split_idx < 2:
-                    flow_image = np.nan_to_num(flow_image)
-                    flow[train_idx] = flow_image
+                    depth_image = np.nan_to_num(depth_image, copy=False)
+                    depth[train_idx] = depth_image
+                    depth_f_image = np.nan_to_num(depth_f_image, copy=False)
+                    depth_f[train_idx] = depth_f_image
+                    # flow_image = np.nan_to_num(flow_image)
+                    # flow[train_idx] = flow_image
 
+                rgb_accum.add(rgb_image)
+                depth_accum.add(depth_image)
+                depth_f_accum.add(depth_f_image)
                 flow_accum.add(flow_image)
-                rgbd_accum.add(rgbd_image)
 
+            rgb_mean = rgb_accum.get_mean().astype(np.float32)
+            rgb_var = rgb_accum.get_variance().astype(np.float32)
+            depth_mean = depth_accum.get_mean().astype(np.float32)
+            depth_var = depth_accum.get_variance().astype(np.float32)
+            depth_f_mean = depth_f_accum.get_mean().astype(np.float32)
+            depth_f_var = depth_f_accum.get_variance().astype(np.float32)
             flow_mean = flow_accum.get_mean().astype(np.float32)
             flow_var = flow_accum.get_variance().astype(np.float32)
-            rgbd_mean = rgbd_accum.get_mean().astype(np.float32)
-            rgbd_var = rgbd_accum.get_variance().astype(np.float32)
 
-            split_mean = np.concatenate((rgbd_mean, flow_mean))
-            split_var = np.concatenate((rgbd_var, flow_var))
+            split_mean = np.concatenate((rgb_mean,
+                                         depth_mean,
+                                         depth_f_mean,
+                                         flow_mean))
+
+            split_var = np.concatenate((rgb_var,
+                                        depth_var,
+                                        depth_f_var,
+                                        flow_var))
 
             means.append(split_mean)
             vars.append(split_var)
