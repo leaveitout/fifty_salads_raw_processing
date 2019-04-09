@@ -48,15 +48,15 @@ def add_mean_and_var(input_file_location: os.path) -> None:
             norm_image = norm[image_idx]
 
             # Change zeros to nans
-            depth_image = np.moveaxis(depth_image, 0, -1)
-            depth_image[(depth_image[:, :, 0] == 0) &
-                        (depth_image[:, :, 1] == 0) &
-                        (depth_image[:, :, 2] == 0)] = np.nan()
+            depth_image = np.moveaxis(depth_image, 0, -1).astype(np.float32)
+            depth_image[(depth_image[:, :, 0] == 72) &
+                        (depth_image[:, :, 1] == 72) &
+                        (depth_image[:, :, 2] == 72)] = np.nan
 
-            norm_image = np.moveaxis(norm_image, 0, -1)
-            norm_image[(norm_image[:, :, 0] == 0) &
-                       (norm_image[:, :, 1] == 0) &
-                       (norm_image[:, :, 2] == 0)] = np.nan()
+            norm_image = np.moveaxis(norm_image, 0, -1).astype(np.float32)
+            norm_image[(norm_image[:, :, 0] == 89) &
+                       (norm_image[:, :, 1] == 89) &
+                       (norm_image[:, :, 2] == 89)] = np.nan
 
             depth_accum.add(depth_image)
             norm_accum.add(norm_image)
@@ -76,7 +76,8 @@ def add_mean_and_var(input_file_location: os.path) -> None:
             )
         ]
 
-        depth_mean_single_value = np.mean(depth_mean_valid_values)
+        depth_mean_single_value = \
+            np.mean(depth_mean_valid_values, axis=0).reshape(3, 1, 1)
 
         depth_var_valid_values = depth_var_image[
             np.logical_not(
@@ -86,7 +87,8 @@ def add_mean_and_var(input_file_location: os.path) -> None:
             )
         ]
 
-        depth_var_single_value = np.var(depth_var_valid_values)
+        depth_var_single_value = \
+            np.mean(depth_var_valid_values, axis=0).reshape(3, 1, 1)
 
         norm_mean_valid_values = norm_mean_image[
             np.logical_not(
@@ -96,7 +98,8 @@ def add_mean_and_var(input_file_location: os.path) -> None:
             )
         ]
 
-        norm_mean_single_value = np.mean(norm_mean_valid_values)
+        norm_mean_single_value = \
+            np.mean(norm_mean_valid_values, axis=0).reshape(3, 1, 1)
 
         norm_var_valid_values = norm_var_image[
             np.logical_not(
@@ -106,7 +109,8 @@ def add_mean_and_var(input_file_location: os.path) -> None:
             )
         ]
 
-        norm_var_single_value = np.var(norm_var_valid_values)
+        norm_var_single_value = \
+            np.mean(norm_var_valid_values, axis=0).reshape(3, 1, 1)
 
         # Create statistic images
         depth_mean_image = \
