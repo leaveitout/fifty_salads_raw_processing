@@ -117,7 +117,7 @@ def add_mean_and_var(input_file_location: os.path) -> None:
         old_means = h5_file['mean'][:]
         old_vars = h5_file['var'][:]
         norm = h5_file['norm']
-        norm_f = h5_file['norm_f']
+        # norm_f = h5_file['norm_f']
         num_splits = len(splits)
 
         for split_idx in range(num_splits):
@@ -137,14 +137,14 @@ def add_mean_and_var(input_file_location: os.path) -> None:
             bar = progressbar.ProgressBar()
             for train_idx in bar(train_idxs):
                 norm_image = norm[train_idx]
-                norm_f_image = norm_f[train_idx]
+                # norm_f_image = norm_f[train_idx]
 
                 # The entire dataset is covered after two splits.
                 if split_idx < 2:
                     norm_image = np.nan_to_num(norm_image, copy=False)
                     norm[train_idx] = norm_image
                     norm_f_image = np.nan_to_num(norm_f_image, copy=False)
-                    norm_f[train_idx] = norm_f_image
+                    # norm_f[train_idx] = norm_f_image
                     # flow_image = np.nan_to_num(flow_image)
                     # flow[train_idx] = flow_image
 
@@ -211,7 +211,7 @@ def check_files_correct(rgb_files, norm_files, sample_dir):
 
 def process_sample(sample_dir: os.path,
                    norm_dataset: h5py.Dataset,
-                   norm_f_dataset: h5py.Dataset,
+                   # norm_f_dataset: h5py.Dataset,
                    offset: int,
                    downscale: float):
     norm_dir = os.path.join(sample_dir, 'norm')
@@ -219,8 +219,8 @@ def process_sample(sample_dir: os.path,
 
     norm_files = glob.glob1(norm_dir, '*.png')
     norm_files.sort()
-    norm_f_files = glob.glob1(norm_f_dir, '*.png')
-    norm_f_files.sort()
+    # norm_f_files = glob.glob1(norm_f_dir, '*.png')
+    # norm_f_files.sort()
 
     print("Adding {} norm...".format(sample_dir))
 
@@ -234,17 +234,17 @@ def process_sample(sample_dir: os.path,
         norm_mat = from_nhwc_to_nchw(norm_mat)
         norm_dataset[offset + idx] = norm_mat
 
-    print("Adding {} norm_f...".format(sample_dir))
-
-    for idx, norm_file in enumerate(norm_f_files):
-        norm_file_path = os.path.join(norm_f_dir, norm_file)
-        norm_mat = load_image(norm_file_path)
-
-        if 0.0 < downscale < 1.0:
-            norm_mat = resize_image(norm_mat, downscale, cv2.INTER_NEAREST)
-
-        norm_mat = from_nhwc_to_nchw(norm_mat)
-        norm_f_dataset[offset + idx] = norm_mat
+    # print("Adding {} norm_f...".format(sample_dir))
+    #
+    # for idx, norm_file in enumerate(norm_f_files):
+    #     norm_file_path = os.path.join(norm_f_dir, norm_file)
+    #     norm_mat = load_image(norm_file_path)
+    #
+    #     if 0.0 < downscale < 1.0:
+    #         norm_mat = resize_image(norm_mat, downscale, cv2.INTER_NEAREST)
+    #
+    #     norm_mat = from_nhwc_to_nchw(norm_mat)
+    #     norm_f_dataset[offset + idx] = norm_mat
 
 
 def add_norms_to_dataset(h5_dataset_path: os.path,
@@ -260,17 +260,22 @@ def add_norms_to_dataset(h5_dataset_path: os.path,
                                               compression='lzf',
                                               chunks=norm_chunk_shape)
 
-        norm_f_dataset = h5_file.create_dataset(name='norm_f',
-                                                shape=norm_dataset_shape,
-                                                dtype=np.uint8,
-                                                compression='lzf',
-                                                chunks=norm_chunk_shape)
+        # norm_f_dataset = h5_file.create_dataset(name='norm_f',
+        #                                         shape=norm_dataset_shape,
+        #                                         dtype=np.uint8,
+        #                                         compression='lzf',
+        #                                         chunks=norm_chunk_shape)
 
         offsets = h5_file['offsets'][:]
 
         for sample_dir, offset in zip(sample_dirs, offsets):
-            process_sample(sample_dir, norm_dataset, norm_f_dataset, offset,
-                           downscale)
+            process_sample(
+                sample_dir,
+                norm_dataset,
+                # norm_f_dataset,
+                offset,
+                downscale
+            )
 
 
 def process_dataset(h5_dataset_path: os.path,

@@ -16,11 +16,13 @@ def add_flow_uint8_to_dataset(h5_dataset_path: os.path):
         flow_dataset = h5_file['flow']
         flow_chunk_shape = (1,) + flow_dataset.shape[1:]
 
-        flow_uint8_dataset = h5_file.create_dataset(name='flowuint8',
-                                                    shape=flow_dataset.shape,
-                                                    dtype=np.uint8,
-                                                    compression='lzf',
-                                                    chunks=flow_chunk_shape)
+        flow_uint8_dataset = h5_file.create_dataset(
+            name='flowuint8',
+            shape=flow_dataset.shape,
+            dtype=np.uint8,
+            compression='lzf',
+            chunks=flow_chunk_shape
+        )
 
         max_abs_flow = 0.05
         distinct_values = 256
