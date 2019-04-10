@@ -57,6 +57,8 @@ def copy_final_datasets(input_h5_path: os.path, output_h5_path: os.path):
     copy_dataset(input_h5_path, output_h5_path, 'fine', 'fine')
     copy_dataset(input_h5_path, output_h5_path, 'splits', 'splits')
     copy_dataset(input_h5_path, output_h5_path, 'offsets', 'offsets')
+    copy_dataset(input_h5_path, output_h5_path, 'mean', 'mean')
+    copy_dataset(input_h5_path, output_h5_path, 'var', 'var')
 
 
 if __name__ == '__main__':

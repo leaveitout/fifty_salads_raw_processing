@@ -24,47 +24,46 @@ def copy_labels_splits_offsets(input_h5_loc: os.path, output_h5_loc: os.path):
                 output_h5.create_dataset(k, data=label_dataset)
 
 
-def create_depth_dataset(input_h5_loc: os.path,
-                         output_h5_loc: os.path,
-                         start_x_crop: int,
-                         stop_x_crop: int,
-                         start_y_crop: int,
-                         stop_y_crop: int):
-    depth_key = 'depth_f'
+def create_dataset(input_h5_loc: os.path,
+                   output_h5_loc: os.path,
+                   dataset_key: str,
+                   start_x_crop: int,
+                   stop_x_crop: int,
+                   start_y_crop: int,
+                   stop_y_crop: int):
     with h5py.File(input_h5_loc, 'r') as input_h5:
-        input_depth_dataset = input_h5[depth_key]
+        input_dataset = input_h5[dataset_key]
         with h5py.File(output_h5_loc, 'a') as output_h5:
-            output_depth_chunk_shape = (
+            output_dataset_chunk_shape = (
                 1,
-                1,
+                3,
                 stop_y_crop - start_y_crop,
                 stop_x_crop - start_x_crop
             )
 
-            output_depth_dataset_shape = (
-                input_depth_dataset.shape[0],
-                1,
-                output_depth_chunk_shape[2],
-                output_depth_chunk_shape[3]
+            output_dataset_shape = (
+                input_dataset.shape[0],
+                3,
+                output_dataset_chunk_shape[2],
+                output_dataset_chunk_shape[3]
             )
 
-            output_depth_dataset = output_h5.create_dataset(
-                'depth',
-                shape=output_depth_dataset_shape,
-                dtype=input_depth_dataset.dtype,
-                chunks=output_depth_chunk_shape,
+            output_dataset = output_h5.create_dataset(
+                dataset_key,
+                shape=output_dataset_shape,
+                dtype=input_dataset.dtype,
+                chunks=output_dataset_chunk_shape,
                 compression='lzf'
             )
 
             bar = progressbar.ProgressBar()
-            print("Extracting depth dataset")
-            for idx in bar(range(input_depth_dataset.shape[0])):
-                output_depth_dataset[idx] = input_depth_dataset[
-                                            idx,
-                                            :,
-                                            start_y_crop: stop_y_crop,
-                                            start_x_crop: stop_x_crop
-                                            ]
+            print("Extracting {} dataset".format(dataset_key))
+            for idx in bar(range(input_dataset.shape[0])):
+                output_dataset[idx] = input_dataset[
+                                      idx,
+                                      :,
+                                      start_y_crop: stop_y_crop,
+                                      start_x_crop: stop_x_crop]
 
 
 def create_rgbflow_datasets(input_h5_loc: os.path,
@@ -75,7 +74,7 @@ def create_rgbflow_datasets(input_h5_loc: os.path,
                             stop_y_crop: int,
                             stride: int):
     rgb_key = 'rgb'
-    flow_key = 'flowuint8'
+    flow_key = 'flow'
     with h5py.File(input_h5_loc, 'r') as input_h5:
         input_rgb_dataset = input_h5[rgb_key]
         input_flow_dataset = input_h5[flow_key]
@@ -148,12 +147,9 @@ def create_stats_datasets(input_h5_loc: os.path,
 
     image_type_mean_planes = {
         'rgb': (0, 1, 2),
-        'depth': (3,),
-        'depth_f': (4,),
-        'flow': (5, 6, 7),
-        'norm': (8, 9, 10),
-        'normf': (11, 12, 13),
-        'curvature': (14,)
+        'depth': (3, 4, 5),
+        'norm': (6, 7, 8),
+        'flow': (9, 10, 11)
     }
 
     with h5py.File(input_h5_loc, 'r') as input_h5:
@@ -161,56 +157,24 @@ def create_stats_datasets(input_h5_loc: os.path,
         input_var_dataset = input_h5[var_key]
 
         # Read the mean and var dataset
-        rgb_means = input_mean_dataset[
-                    :,
-                    image_type_mean_planes['rgb'],
-                    start_y_crop: stop_y_crop,
-                    start_x_crop: stop_x_crop
-                    ]
-
-        depth_means = input_mean_dataset[
+        output_mean = input_mean_dataset[
                       :,
-                      image_type_mean_planes['depth_f'],
                       start_y_crop: stop_y_crop,
                       start_x_crop: stop_x_crop
                       ]
 
-        flow_means = np.zeros_like(rgb_means)
-
-        rgb_vars = input_var_dataset[
-                   :,
-                   image_type_mean_planes['rgb'],
-                   start_y_crop: stop_y_crop,
-                   start_x_crop: stop_x_crop
-                   ]
-
-        depth_vars = input_var_dataset[
+        output_var = input_var_dataset[
                      :,
-                     image_type_mean_planes['depth_f'],
                      start_y_crop: stop_y_crop,
                      start_x_crop: stop_x_crop
                      ]
 
-        flow_vars = 255.0 * np.ones_like(rgb_vars)
-
-        output_means = np.concatenate((rgb_means,
-                                       depth_means,
-                                       rgb_means,
-                                       flow_means),
-                                      axis=-3)
-
-        output_vars = np.concatenate((rgb_vars,
-                                      depth_vars,
-                                      rgb_vars,
-                                      flow_vars),
-                                     axis=-3)
-
         with h5py.File(output_h5_loc, 'a') as output_h5:
             print("Extracting mean dataset")
-            output_h5.create_dataset('mean', data=output_means)
+            output_h5.create_dataset('mean', data=output_mean)
 
             print("Extracting var dataset")
-            output_h5.create_dataset('var', data=output_vars)
+            output_h5.create_dataset('var', data=output_var)
 
 
 def create_strided_dataset(input_h5_loc: os.path,
@@ -222,15 +186,6 @@ def create_strided_dataset(input_h5_loc: os.path,
                            stride: int):
     copy_labels_splits_offsets(input_h5_loc, output_h5_loc)
 
-    create_depth_dataset(
-        input_h5_loc,
-        output_h5_loc,
-        start_x_crop,
-        stop_x_crop,
-        start_y_crop,
-        stop_y_crop,
-    )
-
     create_rgbflow_datasets(
         input_h5_loc,
         output_h5_loc,
@@ -239,6 +194,26 @@ def create_strided_dataset(input_h5_loc: os.path,
         start_y_crop,
         stop_y_crop,
         stride
+    )
+
+    create_dataset(
+        input_h5_loc,
+        output_h5_loc,
+        'depth',
+        start_x_crop,
+        stop_x_crop,
+        start_y_crop,
+        stop_y_crop,
+    )
+
+    create_dataset(
+        input_h5_loc,
+        output_h5_loc,
+        'norm',
+        start_x_crop,
+        stop_x_crop,
+        start_y_crop,
+        stop_y_crop,
     )
 
     create_stats_datasets(

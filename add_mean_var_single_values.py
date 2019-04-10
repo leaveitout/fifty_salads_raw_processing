@@ -17,7 +17,7 @@ def add_mean_and_var(input_file_location: os.path) -> None:
         # Get image shape
         splits = h5_file['splits'][:]
         offsets = h5_file['offsets'][:]
-        depth = h5_file['depth_jet']
+        depth = h5_file['depth']
         norm = h5_file['norm']
         image_shape = h5_file['rgb'].shape[-3:]
 
@@ -49,14 +49,14 @@ def add_mean_and_var(input_file_location: os.path) -> None:
 
             # Change zeros to nans
             depth_image = np.moveaxis(depth_image, 0, -1).astype(np.float32)
-            depth_image[(depth_image[:, :, 0] == 72) &
-                        (depth_image[:, :, 1] == 72) &
-                        (depth_image[:, :, 2] == 72)] = np.nan
+            depth_image[(depth_image[:, :, 0] == 1) &
+                        (depth_image[:, :, 1] == 8) &
+                        (depth_image[:, :, 2] == 206)] = np.nan
 
             norm_image = np.moveaxis(norm_image, 0, -1).astype(np.float32)
-            norm_image[(norm_image[:, :, 0] == 89) &
-                       (norm_image[:, :, 1] == 89) &
-                       (norm_image[:, :, 2] == 89)] = np.nan
+            norm_image[(norm_image[:, :, 0] == 126) &
+                       (norm_image[:, :, 1] == 109) &
+                       (norm_image[:, :, 2] == 33)] = np.nan
 
             depth_accum.add(depth_image)
             norm_accum.add(norm_image)
