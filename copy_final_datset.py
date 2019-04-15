@@ -47,9 +47,9 @@ def copy_dataset(input_h5_path: os.path,
 
 def copy_final_datasets(input_h5_path: os.path, output_h5_path: os.path):
     copy_chunked_dataset(input_h5_path, output_h5_path, 'rgb', 'rgb')
-    copy_chunked_dataset(input_h5_path, output_h5_path, 'depth_jet', 'depth')
+    copy_chunked_dataset(input_h5_path, output_h5_path, 'depth', 'depth')
     copy_chunked_dataset(input_h5_path, output_h5_path, 'norm', 'norm')
-    copy_chunked_dataset(input_h5_path, output_h5_path, 'flow', 'flow')
+    copy_chunked_dataset(input_h5_path, output_h5_path, 'flowuint8', 'flowuint8')
 
     copy_dataset(input_h5_path, output_h5_path, 'coarse', 'coarse')
     copy_dataset(input_h5_path, output_h5_path, 'custom', 'custom')
