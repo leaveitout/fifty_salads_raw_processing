@@ -78,15 +78,11 @@ if __name__ == '__main__':
 
     args = parser.parse_args()
 
-    if os.path.isfile(args.input):
-        fix_strided_dataset(
-            args.original,
-            args.strided,
-            args.startx,
-            args.stopx,
-            args.starty,
-            args.stopy
-        )
-    else:
-        print("File does not exist at location, exiting...")
-        sys.exit(1)
+    fix_strided_dataset(
+        args.original,
+        args.strided,
+        args.startx,
+        args.stopx,
+        args.starty,
+        args.stopy
+    )
