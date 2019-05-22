@@ -14,14 +14,23 @@ import numpy as np
 import cv2
 import h5py
 import progressbar
+from sklearn.preprocessing import OneHotEncoder
 
-# TODO: We need to fix the labels so that they are in one-hot format, not dense.
 
 def colormap_depth_image(input_depth_image_uint8: np.ndarray) -> np.ndarray:
     input_depth_image_uint8 = np.squeeze(input_depth_image_uint8)
     mapped = cv2.applyColorMap(input_depth_image_uint8, cv2.COLORMAP_HOT)
     mapped = np.moveaxis(mapped, -1, 0)
     return mapped
+
+
+def dense_to_one_hot(y: np.ndarray) -> np.ndarray:
+    if y.ndim == 1:
+        y = np.expand_dims(y, -1)
+
+    encoder = OneHotEncoder(dtype=np.float32, sparse=False)
+    y_encoded = encoder.fit_transform(y)
+    return y_encoded
 
 
 def get_offsets(samples_dir: os.path) -> np.ndarray:
@@ -74,7 +83,6 @@ def get_mid_labels(dataset_dir: os.path, offsets: np.ndarray) -> np.ndarray:
     #     os.path.join(rsd, 'labels.json')
     #     for rsd in recording_sample_dirs
     # ]
-    # TODO: We need to fix the labels so they are in one-hot format, not dense.
     all_labels = np.empty(offsets[-1], dtype=np.int32)
 
     sample_label_files = [
@@ -95,7 +103,7 @@ def get_mid_labels(dataset_dir: os.path, offsets: np.ndarray) -> np.ndarray:
     if total != offsets[-1]:
         raise ValueError("No. labels {} != No. samples")
 
-    return all_labels
+    return dense_to_one_hot(all_labels)
 
 
 def convert_flow_image(

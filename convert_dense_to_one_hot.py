@@ -12,7 +12,7 @@ import h5py
 from sklearn.preprocessing import OneHotEncoder
 
 
-def dense_to_one_hot(y: np.ndarray):
+def dense_to_one_hot(y: np.ndarray) -> np.ndarray:
     if y.ndim == 1:
         y = np.expand_dims(y, -1)
 
