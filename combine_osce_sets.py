@@ -17,7 +17,10 @@ import progressbar
 
 
 def colormap_depth_image(input_depth_image_uint8: np.ndarray) -> np.ndarray:
-    return cv2.applyColorMap(input_depth_image_uint8, cv2.COLORMAP_HOT)
+    input_depth_image_uint8 = np.squeeze(input_depth_image_uint8)
+    mapped = cv2.applyColorMap(input_depth_image_uint8, cv2.COLORMAP_HOT)
+    mapped = np.moveaxis(mapped, -1, 0)
+    return mapped
 
 
 def get_offsets(samples_dir: os.path) -> np.ndarray:
@@ -121,7 +124,7 @@ def get_means(image_size: tuple) -> np.ndarray:
     )
 
     # Make a depth image and then convert it
-    depth_mean = np.full_like(rgb_mean, fill_value=128, dtype=np.uint8)
+    depth_mean = np.full(image_size, fill_value=128, dtype=np.uint8)
     depth_mean = colormap_depth_image(depth_mean)
 
     norm_mean = np.full_like(rgb_mean, fill_value=0.0)
@@ -139,12 +142,12 @@ def get_variances(image_size: tuple) -> np.ndarray:
     )
 
     # Make a depth image and then convert it
-    depth_zeros_uint8 = np.full_like(rgb_var, fill_value=0, dtype=np.uint8)
-    depth_ones_uint8 = np.full(rgb_var, fill_value=255, dtype=np.uint8)
+    depth_zeros_uint8 = np.full(image_size, fill_value=0, dtype=np.uint8)
+    depth_ones_uint8 = np.full(image_size, fill_value=255, dtype=np.uint8)
     depth_zeros = colormap_depth_image(depth_zeros_uint8)
     depth_ones = colormap_depth_image(depth_ones_uint8)
     depth_sample = np.stack((depth_zeros, depth_ones))
-    depth_var = np.var(depth_sample)
+    depth_var = np.var(depth_sample, axis=0)
 
     norm_var = np.full_like(rgb_var, fill_value=1.0)
 
@@ -165,7 +168,7 @@ def add_images(
     depth_dataset_shape = (num_frames, 3,) + image_shape
     depth_chunk_shape = (1, 3,) + image_shape
     with h5py.File(output_h5_path, 'r+') as h5_file:
-        rgbflow_dataset = h5_file.create_dataset(name='rgb',
+        rgbflow_dataset = h5_file.create_dataset(name='rgbflow',
                                                  shape=rgbflow_dataset_shape,
                                                  dtype=np.uint8,
                                                  compression='lzf',
@@ -271,14 +274,13 @@ if __name__ == '__main__':
                         type=str)
     parser.add_argument("dataset_dir",
                         help="The directory containing the original dataset.",
-                        default=1.0,
-                        type=float)
+                        type=str)
     parser.add_argument("output",
                         help="The output combined h5 dataset.",
                         type=str)
     parser.add_argument("num_splits",
                         help="The number of splits to use.",
-                        type=str)
+                        type=int)
     args = parser.parse_args()
 
     try:
