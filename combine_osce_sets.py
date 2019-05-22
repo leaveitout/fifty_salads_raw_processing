@@ -15,6 +15,7 @@ import cv2
 import h5py
 import progressbar
 
+# TODO: We need to fix the labels so that they are in one-hot format, not dense.
 
 def colormap_depth_image(input_depth_image_uint8: np.ndarray) -> np.ndarray:
     input_depth_image_uint8 = np.squeeze(input_depth_image_uint8)
@@ -73,6 +74,7 @@ def get_mid_labels(dataset_dir: os.path, offsets: np.ndarray) -> np.ndarray:
     #     os.path.join(rsd, 'labels.json')
     #     for rsd in recording_sample_dirs
     # ]
+    # TODO: We need to fix the labels so they are in one-hot format, not dense.
     all_labels = np.empty(offsets[-1], dtype=np.int32)
 
     sample_label_files = [
